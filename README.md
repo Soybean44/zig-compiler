@@ -1,2 +1,2 @@
-# zig-compiler
-test compiler with zig and qbe
+# Zig Compiler
+This project documents a toy compiler im devloping in zig using the qbe backend
