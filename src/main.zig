@@ -1,5 +1,6 @@
 const std = @import("std");
 const lexer = @import("lexer.zig");
+const Parser = @import("parser.zig").Parser;
 
 fn read_file(alloc: std.mem.Allocator, filename: []const u8) ![]const u8 {
     var txtFile = try std.fs.cwd().openFile(filename, .{ .mode = .read_only });
@@ -25,27 +26,15 @@ pub fn main() !void {
     const filename = args.next() orelse return error.NoFile;
     const txt = try read_file(alloc, filename);
     defer alloc.free(txt);
-    std.debug.print("Program: {s}\n", .{txt});
+    std.debug.print("Program:\n{s}\n", .{txt});
 
     var l: lexer.Lexer = .{ .code = txt, .idx = 0 };
-    std.debug.print("Tok: {s}\n", .{l.consume().?});
-    var expct: []const u8 = "(";
-    std.debug.print("Expecting {s}\n", .{expct});
-    std.debug.print("Tok: {s}\n", .{try l.expect(expct)});
-    expct = "\"";
-    std.debug.print("Expecting {s}\n", .{expct});
-    std.debug.print("Tok: {s}\n", .{try l.expect(expct)});
-    std.debug.print("Tok: {s}\n", .{l.consume().?});
-    std.debug.print("Tok: {s}\n", .{l.consume().?});
-    std.debug.print("Tok: {s}\n", .{l.consume().?});
-    expct = "\"";
-    std.debug.print("Expecting {s}\n", .{expct});
-    std.debug.print("Tok: {s}\n", .{try l.expect(expct)});
-    expct = ")";
-    std.debug.print("Expecting {s}\n", .{expct});
-    std.debug.print("Tok: {s}\n", .{try l.expect(expct)});
-    expct = "\n";
-    std.debug.print("Expecting \\n\n", .{});
-    _ = try l.expect(expct);
-    std.debug.print("Tok: \\n\n", .{});
+    // try lexer.printLexer(&l);
+    var parser = Parser.new(alloc, &l);
+    const irCode = try parser.parse();
+    defer irCode.deinit();
+    var irFile = try std.fs.cwd().createFile("out.ssa", .{});
+    defer irFile.close();
+    try irFile.writeAll(irCode.items);
+
 }
