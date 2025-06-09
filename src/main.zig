@@ -33,8 +33,24 @@ pub fn main() !void {
     var parser = Parser.new(alloc, &l);
     const irCode = try parser.parse();
     defer irCode.deinit();
-    var irFile = try std.fs.cwd().createFile("out.ssa", .{});
+    const output = args.next() orelse return error.NoFile;
+    const irFilename = try std.fmt.allocPrint(alloc, "{s}.ssa", .{output});
+    defer alloc.free(irFilename);
+    var irFile = try std.fs.cwd().createFile(irFilename, .{});
     defer irFile.close();
     try irFile.writeAll(irCode.items);
-
+    const asmFilename = try std.fmt.allocPrint(alloc, "{s}.s", .{output});
+    defer alloc.free(asmFilename);
+    var proc = try std.process.Child.run(.{
+        .allocator = alloc,
+        .argv = &.{ "qbe", "-o", asmFilename,  irFilename},
+    });
+    alloc.free(proc.stdout);
+    alloc.free(proc.stderr);
+    proc = try std.process.Child.run(.{
+        .allocator = alloc,
+        .argv = &.{ "cc", "-o", output,  asmFilename},
+    });
+    alloc.free(proc.stdout);
+    alloc.free(proc.stderr);
 }

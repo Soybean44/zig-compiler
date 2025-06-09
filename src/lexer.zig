@@ -1,15 +1,19 @@
 const std = @import("std");
-const tokens = " ()\"\n";
-pub const TokenType = enum { invalid, identifier, string_literal, lparen, rparen, semicolon, newline, eof };
+const tokens = " ;(){}\"\n";
+pub const TokenType = enum { invalid, identifier, string_literal, lparen, rparen, semicolon, newline, eof, space, lbracket, rbracket};
 pub fn TokenType_to_str(token_type: TokenType) []const u8 {
     return switch (token_type) {
         .invalid => "Invalid",
-        .identifier => "Indentifier",
+        .identifier => "Identifier",
         .string_literal => "String Literal",
         .lparen => "Left Parenthesis",
         .rparen => "Right Parenthesis",
         .semicolon => "Semicolon",
         .newline => "New Line",
+        .space => "Space",
+        .eof => "EOF",
+        .lbracket => "{",
+        .rbracket => "}",
     };
 }
 pub const Token = struct {
@@ -19,7 +23,9 @@ pub const Token = struct {
 
 pub fn is_special(c: u8) bool {
     for (tokens) |d| {
-        if (d == c) return true;
+        if (d == c) {
+            return true;
+        }
     }
     return false;
 }
@@ -45,6 +51,13 @@ pub const Lexer = struct {
                 if (tok_type == .identifier) {
                     return .{ .type = .identifier, .content = self.code[self.idx..i] };
                 }
+                else if (tok_type == .string_literal) {
+                    if (c == '"') {
+                        return .{ .type = .string_literal, .content = self.code[self.idx + 1 .. i] };
+                    } 
+                    i += 1;
+                    continue;
+                }
                 switch (c) {
                     '(' => {
                         return .{ .type = .lparen, .content = "(" };
@@ -52,17 +65,21 @@ pub const Lexer = struct {
                     ')' => {
                         return .{ .type = .rparen, .content = ")" };
                     },
+                    '{' => {
+                        return .{ .type = .lbracket, .content = "{" };
+                    },
+                    '}' => {
+                        return .{ .type = .rbracket, .content = "}" };
+                    },
                     ';' => {
                         return .{ .type = .semicolon, .content = ";" };
                     },
                     '"' => {
-                        if (tok_type == .string_literal) {
-                            return .{ .type = .string_literal, .content = self.code[self.idx + 1 .. i] };
-                        } else {
-                            tok_type = .string_literal;
-                        }
+                        tok_type = .string_literal;
                     },
-                    ' ' => {},
+                    ' ' => {
+                        return .{ .type = .space, .content = "Space" };
+                    },
                     '\n' => {
                         return .{ .type = .newline, .content = "\\n" };
                     },
@@ -80,26 +97,36 @@ pub const Lexer = struct {
             return .{ .type = .identifier, .content = self.code[self.idx..i] };
         } else return error.UnexpectedEOF;
     }
-    pub fn peak(self: *Lexer) !?Token {
+    pub fn peak(self: *Lexer) !Token {
         const idx = self.idx;
         defer self.idx = idx;
         return self.consume();
     }
     pub fn expect(self: *Lexer, expected: TokenType) !?Token {
         const tok = try self.consume();
-        return if (tok.type == expected) tok else null;
+        if (tok.type == expected) return tok else {
+            std.debug.print("Error: expected {s} but got {s}\n" , .{TokenType_to_str(expected), TokenType_to_str(tok.type)});
+            return null;
+        }
     }
     pub fn expect_peak(self: *Lexer, expected: ?TokenType) !?Token {
         const tok = try self.peak();
         return if (tok.type == expected) tok else null;
     }
 
+
     pub fn next(self: *Lexer) !?Token {
         const tok = try self.consume();
         if (tok.type == .eof) return null else return tok;
     }
+
+    pub fn peak_next(self: *Lexer) !?Token {
+        const tok = try self.peak();
+        if (tok.type == .eof) return null else return tok;
+    }
+
     pub fn consume_until(self: *Lexer, expected: TokenType) !?Token {
-        while (try self.next()) |tok|{
+        while (try self.next()) |tok| {
             if (tok.type == expected) return tok;
         }
         if (expected == .eof) return .{ .type = .eof, .content = "EOF" };
@@ -109,6 +136,6 @@ pub const Lexer = struct {
 
 pub fn printLexer(l: *Lexer) !void {
     while (try l.next()) |tok| {
-        std.debug.print("Type: {s}, Content: {s}\n", .{TokenType_to_str(tok.type), tok.content});
+        std.debug.print("Type: {s}, Content: {s}\n", .{ TokenType_to_str(tok.type), tok.content });
     }
 }
