@@ -1,6 +1,6 @@
 const std = @import("std");
-const tokens = " ;(){}\"\n";
-pub const TokenType = enum { invalid, identifier, string_literal, lparen, rparen, semicolon, newline, eof, space, lbracket, rbracket};
+const tokens = " #;(){}\"\n\t";
+pub const TokenType = enum { invalid, identifier, string_literal, lparen, rparen, semicolon, eof, wspace, lbracket, rbracket, comment};
 pub fn TokenType_to_str(token_type: TokenType) []const u8 {
     return switch (token_type) {
         .invalid => "Invalid",
@@ -9,16 +9,29 @@ pub fn TokenType_to_str(token_type: TokenType) []const u8 {
         .lparen => "Left Parenthesis",
         .rparen => "Right Parenthesis",
         .semicolon => "Semicolon",
-        .newline => "New Line",
-        .space => "Space",
+        .wspace => "White Space",
         .eof => "EOF",
         .lbracket => "{",
         .rbracket => "}",
+        .comment => "Comment",
     };
 }
+
+pub fn print_whitespace(c: u8) ![]const u8 {
+    return switch (c) {
+        ' ' => "Space",
+        '\n' => "Newline",
+        '\t' => "Tab",
+        else => error.InvalidWhitespaceChar
+    };
+}
+
 pub const Token = struct {
     type: TokenType,
     content: []const u8,
+    pub fn pretty_print(self: *const Token) void {
+        std.debug.print("Type: {s}, Content: {s}\n", .{ TokenType_to_str(self.type), self.content });
+    }
 };
 
 pub fn is_special(c: u8) bool {
@@ -77,11 +90,11 @@ pub const Lexer = struct {
                     '"' => {
                         tok_type = .string_literal;
                     },
-                    ' ' => {
-                        return .{ .type = .space, .content = "Space" };
+                    '#' => {
+                        return .{ .type = .comment, .content = "#" };
                     },
-                    '\n' => {
-                        return .{ .type = .newline, .content = "\\n" };
+                    ' ', '\n', '\t' => {
+                        return .{ .type = .wspace, .content = try print_whitespace(c) };
                     },
                     else => {
                         std.debug.print("c: {c}\n", .{c});
@@ -97,11 +110,13 @@ pub const Lexer = struct {
             return .{ .type = .identifier, .content = self.code[self.idx..i] };
         } else return error.UnexpectedEOF;
     }
+
     pub fn peak(self: *Lexer) !Token {
         const idx = self.idx;
         defer self.idx = idx;
         return self.consume();
     }
+
     pub fn expect(self: *Lexer, expected: TokenType) !?Token {
         const tok = try self.consume();
         if (tok.type == expected) return tok else {
@@ -109,11 +124,27 @@ pub const Lexer = struct {
             return null;
         }
     }
-    pub fn expect_peak(self: *Lexer, expected: ?TokenType) !?Token {
+
+    pub fn expect_many(self: *Lexer, expected: []const TokenType) !?Token {
+        for (expected) |t| {
+            if (try self.expect_peak(t) != null) return try self.consume();
+        }
+        return null;
+    }
+
+    pub fn expect_peak(self: *Lexer, expected: TokenType) !?Token {
         const tok = try self.peak();
         return if (tok.type == expected) tok else null;
     }
 
+    pub fn expect_peak_many(self: *Lexer, expected: []const TokenType) !?Token {
+        var tok: Token = undefined;
+        for (expected) |t| {
+            tok = try self.expect_peak(t);
+            if (tok != null) return tok;
+        }
+        return null;
+    }
 
     pub fn next(self: *Lexer) !?Token {
         const tok = try self.consume();
@@ -126,16 +157,36 @@ pub const Lexer = struct {
     }
 
     pub fn consume_until(self: *Lexer, expected: TokenType) !?Token {
-        while (try self.next()) |tok| {
-            if (tok.type == expected) return tok;
+        var tok: ?Token = null;
+        while (true) {
+            tok = try self.peak();
+            if (tok.?.type == .eof) break;
+            tok = try self.expect(expected);
+            if (tok != null) return tok;
         }
         if (expected == .eof) return .{ .type = .eof, .content = "EOF" };
-        return null;
+        return tok;
     }
+
+    pub fn consume_until_many(self: *Lexer, expected: []const TokenType) !?Token {
+        var tok: ?Token = null;
+        while (true) {
+            tok = try self.peak();
+            if (tok.?.type == .eof) break;
+            tok = try self.expect_many(expected);
+            tok.?.pretty_print();
+            if (tok != null) return tok;
+        }
+        for (expected) |t| {
+            if (t == .eof) return .{ .type = .eof, .content = "EOF" };
+        }
+        return tok;
+    }
+
 };
 
 pub fn printLexer(l: *Lexer) !void {
     while (try l.next()) |tok| {
-        std.debug.print("Type: {s}, Content: {s}\n", .{ TokenType_to_str(tok.type), tok.content });
+        tok.pretty_print();
     }
 }
